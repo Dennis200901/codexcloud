@@ -8,6 +8,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional
 
+import tkinter as tk
+from tkinter import messagebox
+
 
 @dataclass
 class GameState:
@@ -116,5 +119,81 @@ def play_game() -> None:
         state.current_player = switch_player(state.current_player)
 
 
+class TicTacToeGUI:
+    """Tkinter-based graphical interface for playing Tic Tac Toe."""
+
+    def __init__(self) -> None:
+        self.state = GameState(board=[None] * 9, current_player="X")
+        self.root = tk.Tk()
+        self.root.title("Tic Tac Toe")
+
+        self.status_var = tk.StringVar()
+        self.status_var.set("Player X's turn")
+
+        self.buttons: List[tk.Button] = []
+        self.game_over = False
+
+        board_frame = tk.Frame(self.root)
+        board_frame.pack(padx=10, pady=10)
+
+        for index in range(9):
+            button = tk.Button(
+                board_frame,
+                text=" ",
+                font=("Helvetica", 24),
+                width=3,
+                height=1,
+                command=lambda idx=index: self.handle_move(idx),
+            )
+            row, col = divmod(index, 3)
+            button.grid(row=row, column=col, padx=5, pady=5)
+            self.buttons.append(button)
+
+        status_label = tk.Label(self.root, textvariable=self.status_var, font=("Helvetica", 14))
+        status_label.pack(pady=(0, 10))
+
+    def handle_move(self, index: int) -> None:
+        """Handle a button press for the specified board index."""
+
+        if self.game_over or self.state.board[index] is not None:
+            return
+
+        current_player = self.state.current_player
+        self.state.board[index] = current_player
+        self.buttons[index].config(text=current_player, state=tk.DISABLED)
+
+        winner = check_winner(self.state.board)
+        if winner:
+            self._end_game(f"Player {winner} wins! Congratulations!")
+            return
+
+        if is_draw(self.state.board):
+            self._end_game("It's a draw!")
+            return
+
+        self.state.current_player = switch_player(current_player)
+        self.status_var.set(f"Player {self.state.current_player}'s turn")
+
+    def _end_game(self, message: str) -> None:
+        """Handle end-of-game logic by disabling the board and showing a message."""
+
+        self.game_over = True
+        self.status_var.set(message)
+        for button in self.buttons:
+            button.config(state=tk.DISABLED)
+        messagebox.showinfo("Game Over", message)
+
+    def run(self) -> None:
+        """Start the Tkinter main loop to display the GUI."""
+
+        self.root.mainloop()
+
+
+def play_gui() -> None:
+    """Launch the graphical Tic Tac Toe game."""
+
+    TicTacToeGUI().run()
+
+
 if __name__ == "__main__":
-    play_game()
+    play_gui()
