@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import tkinter as tk
 from tkinter import messagebox
@@ -147,9 +147,11 @@ def choose_ai_move(
 class TicTacToeApp:
     """Tkinter application that supports multiple Tic Tac Toe modes."""
 
-    def __init__(self) -> None:
+    def __init__(self, on_exit: Optional[Callable[[], None]] = None) -> None:
+        self.on_exit = on_exit
         self.root = tk.Tk()
         self.root.title("Tic Tac Toe")
+        self.root.protocol("WM_DELETE_WINDOW", self._return_to_launcher)
 
         self.current_frame: Optional[tk.Frame] = None
         self.status_var = tk.StringVar()
@@ -210,9 +212,9 @@ class TicTacToeApp:
 
         tk.Button(
             frame,
-            text="Beenden",
+            text="Zurück zur Auswahl",
             width=20,
-            command=self.root.destroy,
+            command=self._return_to_launcher,
         ).pack(pady=5)
 
         self._switch_frame(frame)
@@ -477,11 +479,359 @@ class TicTacToeApp:
 
         self.root.mainloop()
 
+    def _return_to_launcher(self) -> None:
+        self.root.destroy()
+        if self.on_exit is not None:
+            self.on_exit()
+
+
+TETROMINOES: Tuple[Tuple[str, Tuple[Tuple[int, int], ...], str], ...] = (
+    ("I", ((-1, 0), (0, 0), (1, 0), (2, 0)), "#5BC0EB"),
+    ("J", ((-1, 0), (0, 0), (1, 0), (-1, 1)), "#F25F5C"),
+    ("L", ((-1, 0), (0, 0), (1, 0), (1, 1)), "#FFE066"),
+    ("O", ((0, 0), (1, 0), (0, 1), (1, 1)), "#247BA0"),
+    ("S", ((-1, 1), (0, 1), (0, 0), (1, 0)), "#70C1B3"),
+    ("T", ((-1, 0), (0, 0), (1, 0), (0, 1)), "#50514F"),
+    ("Z", ((-1, 0), (0, 0), (0, 1), (1, 1)), "#FF8066"),
+)
+
+
+class TetrisApp:
+    """Simple Tetris implementation using Tkinter."""
+
+    def __init__(self, on_exit: Optional[Callable[[], None]] = None) -> None:
+        self.on_exit = on_exit
+        self.root = tk.Tk()
+        self.root.title("Tetris")
+        self.root.protocol("WM_DELETE_WINDOW", self._return_to_launcher)
+
+        self.width = 10
+        self.height = 20
+        self.cell_size = 28
+
+        self.score = 0
+        self.lines_cleared = 0
+        self.level = 1
+
+        self.board: List[List[Optional[str]]] = []
+        self.current_shape: List[Tuple[int, int]] = []
+        self.current_color = ""
+        self.current_piece_name = ""
+        self.piece_x = 0
+        self.piece_y = 0
+        self.game_running = False
+        self.after_id: Optional[str] = None
+
+        info_frame = tk.Frame(self.root, padx=10, pady=10)
+        info_frame.pack()
+
+        self.score_var = tk.StringVar()
+        self.level_var = tk.StringVar()
+        self.lines_var = tk.StringVar()
+
+        tk.Label(info_frame, textvariable=self.score_var, font=("Helvetica", 12)).grid(
+            row=0, column=0, padx=5
+        )
+        tk.Label(info_frame, textvariable=self.level_var, font=("Helvetica", 12)).grid(
+            row=0, column=1, padx=5
+        )
+        tk.Label(info_frame, textvariable=self.lines_var, font=("Helvetica", 12)).grid(
+            row=0, column=2, padx=5
+        )
+
+        self.canvas = tk.Canvas(
+            self.root,
+            width=self.width * self.cell_size,
+            height=self.height * self.cell_size,
+            bg="black",
+            highlightthickness=0,
+        )
+        self.canvas.pack(padx=10, pady=10)
+
+        tk.Label(
+            self.root,
+            text="Steuerung: Pfeiltasten bewegen, Pfeil hoch dreht, Leertaste Hard Drop",
+            font=("Helvetica", 10),
+        ).pack(pady=(0, 10))
+
+        controls = tk.Frame(self.root, pady=5)
+        controls.pack()
+
+        tk.Button(controls, text="Neustart", command=self.start_game).pack(
+            side=tk.LEFT, padx=5
+        )
+        tk.Button(controls, text="Zurück zur Auswahl", command=self._return_to_launcher).pack(
+            side=tk.LEFT, padx=5
+        )
+
+        self.root.bind("<Left>", self._handle_left)
+        self.root.bind("<Right>", self._handle_right)
+        self.root.bind("<Down>", self._handle_down)
+        self.root.bind("<Up>", self._handle_rotate)
+        self.root.bind("<space>", self._handle_drop)
+
+        self.start_game()
+
+    def run(self) -> None:
+        self.root.mainloop()
+
+    def start_game(self) -> None:
+        self._cancel_drop()
+        self.board = [[None for _ in range(self.width)] for _ in range(self.height)]
+        self.score = 0
+        self.lines_cleared = 0
+        self.level = 1
+        self.game_running = True
+        self.current_shape = []
+        self.current_color = ""
+        self.current_piece_name = ""
+        self._update_info()
+        if not self._spawn_piece():
+            self._handle_game_over()
+            return
+        self._draw()
+        self._schedule_drop()
+
+    def _handle_left(self, event: tk.Event) -> None:  # pragma: no cover - UI callback
+        if self.game_running:
+            self._move_piece(-1, 0)
+
+    def _handle_right(self, event: tk.Event) -> None:  # pragma: no cover - UI callback
+        if self.game_running:
+            self._move_piece(1, 0)
+
+    def _handle_down(self, event: tk.Event) -> None:  # pragma: no cover - UI callback
+        if self.game_running:
+            if self._move_piece(0, 1):
+                self.score += 1
+                self._update_info()
+
+    def _handle_rotate(self, event: tk.Event) -> None:  # pragma: no cover - UI callback
+        if self.game_running:
+            self._rotate_piece()
+
+    def _handle_drop(self, event: tk.Event) -> None:  # pragma: no cover - UI callback
+        if not self.game_running:
+            return
+        moved = False
+        while self._move_piece(0, 1):
+            moved = True
+            self.score += 2
+        if moved:
+            self._update_info()
+        self.step()
+
+    def step(self) -> None:
+        if not self.game_running:
+            return
+        if not self._move_piece(0, 1):
+            if not self._lock_piece():
+                self._handle_game_over()
+                return
+            cleared = self._clear_lines()
+            if cleared:
+                self.score += (cleared ** 2) * 100
+                self.lines_cleared += cleared
+                self.level = 1 + self.lines_cleared // 10
+                self._update_info()
+            if not self._spawn_piece():
+                self._handle_game_over()
+                return
+        self._schedule_drop()
+
+    def _schedule_drop(self) -> None:
+        self._cancel_drop()
+        if not self.game_running:
+            return
+        interval = max(120, 700 - (self.level - 1) * 60)
+        self.after_id = self.root.after(interval, self.step)
+
+    def _cancel_drop(self) -> None:
+        if self.after_id is not None:
+            self.root.after_cancel(self.after_id)
+            self.after_id = None
+
+    def _spawn_piece(self) -> bool:
+        name, offsets, color = random.choice(TETROMINOES)
+        self.current_piece_name = name
+        self.current_shape = [tuple(offset) for offset in offsets]
+        self.current_color = color
+        self.piece_x = self.width // 2
+        self.piece_y = 0
+        if not self._piece_fits(self.current_shape, self.piece_x, self.piece_y):
+            return False
+        self._draw()
+        return True
+
+    def _move_piece(self, dx: int, dy: int) -> bool:
+        if not self.current_shape:
+            return False
+        new_x = self.piece_x + dx
+        new_y = self.piece_y + dy
+        if self._piece_fits(self.current_shape, new_x, new_y):
+            self.piece_x = new_x
+            self.piece_y = new_y
+            self._draw()
+            return True
+        return False
+
+    def _rotate_piece(self) -> None:
+        if not self.current_shape:
+            return
+        if self.current_piece_name == "O":
+            return
+        rotated = [(-y, x) for x, y in self.current_shape]
+        if self._piece_fits(rotated, self.piece_x, self.piece_y):
+            self.current_shape = rotated
+            self._draw()
+            return
+        for dx in (-1, 1, -2, 2):
+            if self._piece_fits(rotated, self.piece_x + dx, self.piece_y):
+                self.piece_x += dx
+                self.current_shape = rotated
+                self._draw()
+                return
+
+    def _piece_fits(
+        self, shape: Sequence[Tuple[int, int]], offset_x: int, offset_y: int
+    ) -> bool:
+        for x_offset, y_offset in shape:
+            x = offset_x + x_offset
+            y = offset_y + y_offset
+            if x < 0 or x >= self.width:
+                return False
+            if y >= self.height:
+                return False
+            if y >= 0 and self.board[y][x] is not None:
+                return False
+        return True
+
+    def _current_blocks(self) -> List[Tuple[int, int]]:
+        return [
+            (self.piece_x + x_offset, self.piece_y + y_offset)
+            for x_offset, y_offset in self.current_shape
+        ]
+
+    def _lock_piece(self) -> bool:
+        top_out = False
+        for x, y in self._current_blocks():
+            if y < 0:
+                top_out = True
+                continue
+            self.board[y][x] = self.current_color
+        self.current_shape = []
+        return not top_out
+
+    def _clear_lines(self) -> int:
+        new_board: List[List[Optional[str]]] = []
+        cleared = 0
+        for row in self.board:
+            if all(cell is not None for cell in row):
+                cleared += 1
+            else:
+                new_board.append(row)
+        while len(new_board) < self.height:
+            new_board.insert(0, [None for _ in range(self.width)])
+        if cleared:
+            self.board = new_board
+            self._draw()
+        return cleared
+
+    def _draw(self) -> None:
+        self.canvas.delete("all")
+        for y, row in enumerate(self.board):
+            for x, color in enumerate(row):
+                if color:
+                    self._draw_cell(x, y, color)
+        for x, y in self._current_blocks():
+            if y >= 0:
+                self._draw_cell(x, y, self.current_color)
+        self._draw_grid()
+
+    def _draw_cell(self, x: int, y: int, color: str) -> None:
+        size = self.cell_size
+        x1 = x * size
+        y1 = y * size
+        x2 = x1 + size
+        y2 = y1 + size
+        self.canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="#1a1a1a")
+
+    def _draw_grid(self) -> None:
+        size = self.cell_size
+        for x in range(self.width + 1):
+            self.canvas.create_line(x * size, 0, x * size, self.height * size, fill="#222")
+        for y in range(self.height + 1):
+            self.canvas.create_line(0, y * size, self.width * size, y * size, fill="#222")
+
+    def _update_info(self) -> None:
+        self.score_var.set(f"Punkte: {self.score}")
+        self.level_var.set(f"Level: {self.level}")
+        self.lines_var.set(f"Linien: {self.lines_cleared}")
+
+    def _handle_game_over(self) -> None:
+        self.game_running = False
+        self._cancel_drop()
+        self._draw()
+        messagebox.showinfo("Tetris", "Spiel vorbei! Starte neu oder kehre zurück.")
+
+    def _return_to_launcher(self) -> None:
+        self.game_running = False
+        self._cancel_drop()
+        self.root.destroy()
+        if self.on_exit is not None:
+            self.on_exit()
+
+
+class GameLauncher:
+    """Startbildschirm zur Auswahl zwischen Tic Tac Toe und Tetris."""
+
+    def __init__(self) -> None:
+        self.root = tk.Tk()
+        self.root.title("Spielauswahl")
+        self.next_action: Optional[str] = None
+
+        frame = tk.Frame(self.root, padx=20, pady=20)
+        frame.pack()
+
+        tk.Label(frame, text="Willkommen!", font=("Helvetica", 24, "bold")).pack(pady=10)
+        tk.Label(frame, text="Wähle ein Spiel:", font=("Helvetica", 14)).pack(pady=(0, 10))
+
+        tk.Button(
+            frame,
+            text="Tic Tac Toe",
+            width=20,
+            command=lambda: self._start("tic_tac_toe"),
+        ).pack(pady=5)
+
+        tk.Button(
+            frame,
+            text="Tetris",
+            width=20,
+            command=lambda: self._start("tetris"),
+        ).pack(pady=5)
+
+        tk.Button(frame, text="Beenden", width=20, command=self.root.destroy).pack(pady=5)
+
+    def _start(self, action: str) -> None:
+        self.next_action = action
+        self.root.quit()
+
+    def run(self) -> None:
+        self.root.mainloop()
+        action = self.next_action
+        if self.root.winfo_exists():
+            self.root.destroy()
+
+        if action == "tic_tac_toe":
+            TicTacToeApp(on_exit=play_gui).run()
+        elif action == "tetris":
+            TetrisApp(on_exit=play_gui).run()
+
 
 def play_gui() -> None:
-    """Launch the graphical Tic Tac Toe game."""
+    """Launch the game launcher to pick between Tic Tac Toe and Tetris."""
 
-    TicTacToeApp().run()
+    GameLauncher().run()
 
 
 if __name__ == "__main__":
