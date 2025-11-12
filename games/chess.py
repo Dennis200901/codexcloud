@@ -232,7 +232,7 @@ class ChessGame:
         go_back,
         single_player: bool = False,
         difficulty: str = "mittel",
-        trophy_hall: TrophyHall | None = None,
+        trophy_hall: Optional[TrophyHall] = None,
     ):
         self.screen = screen
         self.font = font

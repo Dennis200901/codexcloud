@@ -1,5 +1,5 @@
 import random
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import pygame
 
@@ -34,7 +34,7 @@ class TetrisGame:
         screen: pygame.Surface,
         font: pygame.font.Font,
         go_back,
-        trophy_hall: TrophyHall | None = None,
+        trophy_hall: Optional[TrophyHall] = None,
     ):
         self.screen = screen
         self.font = font
@@ -45,7 +45,7 @@ class TetrisGame:
         self.offset_x = (screen.get_width() - self.play_width) // 2
         self.offset_y = (screen.get_height() - self.play_height) // 2
 
-        self.board: List[List[Tuple[int, int, int] | None]] = [
+        self.board: List[List[Optional[Tuple[int, int, int]]]] = [
             [None for _ in range(self.COLS)] for _ in range(self.ROWS)
         ]
         self.current_piece = None

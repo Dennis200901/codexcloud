@@ -1,3 +1,5 @@
+from typing import List
+
 import pygame
 
 
@@ -80,7 +82,7 @@ class OptionGroup:
         self.options = options
         self.font = font
         self.on_change = on_change
-        self.buttons: list[Button] = []
+        self.buttons: List[Button] = []
         button_width = self.rect.width / len(options)
         for idx, label in enumerate(options):
             btn_rect = (
