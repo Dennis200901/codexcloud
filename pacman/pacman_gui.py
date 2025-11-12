@@ -4,9 +4,11 @@ from __future__ import annotations
 import math
 import os
 import sys
-from typing import Dict, Tuple
+from importlib import import_module
+from importlib.util import find_spec
+from typing import Any, Dict, Tuple
 
-import pygame
+pygame = import_module("pygame") if find_spec("pygame") else None
 
 if __package__ in (None, ""):
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -37,16 +39,17 @@ GHOST_COLORS = [
     (64, 255, 215),
 ]
 
-KEY_TO_DIRECTION: Dict[int, Tuple[int, int]] = {
-    pygame.K_UP: DIRECTIONS["UP"],
-    pygame.K_DOWN: DIRECTIONS["DOWN"],
-    pygame.K_LEFT: DIRECTIONS["LEFT"],
-    pygame.K_RIGHT: DIRECTIONS["RIGHT"],
-    pygame.K_w: DIRECTIONS["UP"],
-    pygame.K_s: DIRECTIONS["DOWN"],
-    pygame.K_a: DIRECTIONS["LEFT"],
-    pygame.K_d: DIRECTIONS["RIGHT"],
-}
+def _build_key_map(pg: Any) -> Dict[int, Tuple[int, int]]:
+    return {
+        pg.K_UP: DIRECTIONS["UP"],
+        pg.K_DOWN: DIRECTIONS["DOWN"],
+        pg.K_LEFT: DIRECTIONS["LEFT"],
+        pg.K_RIGHT: DIRECTIONS["RIGHT"],
+        pg.K_w: DIRECTIONS["UP"],
+        pg.K_s: DIRECTIONS["DOWN"],
+        pg.K_a: DIRECTIONS["LEFT"],
+        pg.K_d: DIRECTIONS["RIGHT"],
+    }
 
 DIRECTION_ANGLE = {
     DIRECTIONS["RIGHT"]: 0,
@@ -56,23 +59,34 @@ DIRECTION_ANGLE = {
 }
 
 
+def _require_pygame() -> None:
+    if pygame is None:
+        raise ModuleNotFoundError(
+            "The Pac-Man GUI requires the 'pygame' package. Install it with 'pip install pygame'."
+        )
+
+
 class PacmanApp:
     """Pygame application shell for the Pac-Man clone."""
 
     def __init__(self) -> None:
-        pygame.init()
-        pygame.display.set_caption("Pac-Man")
-        pygame.font.init()
+        _require_pygame()
+        self.pg = pygame  # type: ignore[assignment]
+        self.key_map = _build_key_map(self.pg)
+
+        self.pg.init()
+        self.pg.display.set_caption("Pac-Man")
+        self.pg.font.init()
 
         self.logic = PacmanLogic()
-        self.clock = pygame.time.Clock()
+        self.clock = self.pg.time.Clock()
         self.tile_size = TILE_SIZE
         self.width = self.logic.width * self.tile_size
         self.height = self.logic.height * self.tile_size + STATUS_HEIGHT
-        self.screen = pygame.display.set_mode((self.width, self.height))
+        self.screen = self.pg.display.set_mode((self.width, self.height))
 
-        self.font = pygame.font.SysFont("arial", 24)
-        self.small_font = pygame.font.SysFont("arial", 18)
+        self.font = self.pg.font.SysFont("arial", 24)
+        self.small_font = self.pg.font.SysFont("arial", 18)
 
         self.running = True
         self.state = "playing"  # "playing" or "gameover"
@@ -82,18 +96,18 @@ class PacmanApp:
 
     # --- Event handling --------------------------------------------------
     def handle_events(self) -> None:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+        for event in self.pg.event.get():
+            if event.type == self.pg.QUIT:
                 self.running = False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
+            elif event.type == self.pg.KEYDOWN:
+                if event.key == self.pg.K_ESCAPE:
                     self.running = False
-                elif self.state == "gameover" and event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                elif self.state == "gameover" and event.key in (self.pg.K_RETURN, self.pg.K_SPACE):
                     self.reset_game()
                 elif self.state == "playing":
-                    if event.key in KEY_TO_DIRECTION:
-                        self.logic.set_desired_direction(KEY_TO_DIRECTION[event.key])
-                    elif event.key in (pygame.K_q, pygame.K_x):
+                    if event.key in self.key_map:
+                        self.logic.set_desired_direction(self.key_map[event.key])
+                    elif event.key in (self.pg.K_q, self.pg.K_x):
                         self.running = False
 
     # --- Game state updates ----------------------------------------------
@@ -131,28 +145,28 @@ class PacmanApp:
         if self.state == "gameover":
             self._draw_overlay(self.game_over_message)
 
-        pygame.display.flip()
+        self.pg.display.flip()
 
     def _draw_maze(self) -> None:
         for r in range(self.logic.height):
             for c in range(self.logic.width):
                 if (r, c) in self.logic.walls:
-                    rect = pygame.Rect(
+                    rect = self.pg.Rect(
                         c * self.tile_size,
                         r * self.tile_size,
                         self.tile_size,
                         self.tile_size,
                     )
-                    pygame.draw.rect(self.screen, COLOR_WALL, rect, border_radius=6)
+                    self.pg.draw.rect(self.screen, COLOR_WALL, rect, border_radius=6)
 
     def _draw_pellets(self) -> None:
         half = self.tile_size // 2
         for row, col in self.logic.pellets:
             center = (col * self.tile_size + half, row * self.tile_size + half)
-            pygame.draw.circle(self.screen, COLOR_PELLET, center, self.tile_size // 8)
+            self.pg.draw.circle(self.screen, COLOR_PELLET, center, self.tile_size // 8)
         for row, col in self.logic.power_pellets:
             center = (col * self.tile_size + half, row * self.tile_size + half)
-            pygame.draw.circle(self.screen, COLOR_POWER, center, self.tile_size // 4)
+            self.pg.draw.circle(self.screen, COLOR_POWER, center, self.tile_size // 4)
 
     def _draw_characters(self) -> None:
         self._draw_ghosts()
@@ -163,7 +177,7 @@ class PacmanApp:
         center_x = col * self.tile_size + self.tile_size // 2
         center_y = row * self.tile_size + self.tile_size // 2
         radius = self.tile_size // 2 - 2
-        pygame.draw.circle(self.screen, COLOR_PACMAN, (center_x, center_y), radius)
+        self.pg.draw.circle(self.screen, COLOR_PACMAN, (center_x, center_y), radius)
 
         angle = DIRECTION_ANGLE.get(self.logic.pacman.direction, 0)
         mouth_angle = math.radians(angle)
@@ -179,7 +193,7 @@ class PacmanApp:
                 center_y + radius * math.sin(mouth_angle + gap),
             ),
         ]
-        pygame.draw.polygon(
+        self.pg.draw.polygon(
             self.screen,
             COLOR_BACKGROUND,
             [(round(x), round(y)) for x, y in points],
@@ -197,15 +211,15 @@ class PacmanApp:
                 y + self.tile_size // 2,
             )
             head_radius = self.tile_size // 2 - 2
-            pygame.draw.circle(self.screen, color, head_center, head_radius)
+            self.pg.draw.circle(self.screen, color, head_center, head_radius)
 
-            body_rect = pygame.Rect(
+            body_rect = self.pg.Rect(
                 x + 2,
                 y + self.tile_size // 2,
                 self.tile_size - 4,
                 self.tile_size // 2,
             )
-            pygame.draw.rect(self.screen, color, body_rect)
+            self.pg.draw.rect(self.screen, color, body_rect)
 
             fringe_radius = self.tile_size // 8
             for i in range(4):
@@ -213,7 +227,12 @@ class PacmanApp:
                     x + fringe_radius * (2 * i + 1),
                     y + self.tile_size - fringe_radius,
                 )
-                pygame.draw.circle(self.screen, color, (int(fringe_center[0]), int(fringe_center[1])), fringe_radius)
+                self.pg.draw.circle(
+                    self.screen,
+                    color,
+                    (int(fringe_center[0]), int(fringe_center[1])),
+                    fringe_radius,
+                )
 
             eye_offset_x = self.tile_size // 6
             eye_offset_y = self.tile_size // 6
@@ -221,12 +240,12 @@ class PacmanApp:
             pupil_radius = max(2, self.tile_size // 16)
             for offset in (-eye_offset_x, eye_offset_x):
                 eye_center = (head_center[0] + offset, head_center[1] - eye_offset_y)
-                pygame.draw.circle(self.screen, (255, 255, 255), eye_center, eye_radius)
-                pygame.draw.circle(self.screen, (0, 0, 0), eye_center, pupil_radius)
+                self.pg.draw.circle(self.screen, (255, 255, 255), eye_center, eye_radius)
+                self.pg.draw.circle(self.screen, (0, 0, 0), eye_center, pupil_radius)
 
     def _draw_status_panel(self) -> None:
-        panel_rect = pygame.Rect(0, self.logic.height * self.tile_size, self.width, STATUS_HEIGHT)
-        pygame.draw.rect(self.screen, (16, 16, 16), panel_rect)
+        panel_rect = self.pg.Rect(0, self.logic.height * self.tile_size, self.width, STATUS_HEIGHT)
+        self.pg.draw.rect(self.screen, (16, 16, 16), panel_rect)
 
         score_text = self.font.render(f"Score: {self.logic.score}", True, COLOR_TEXT)
         lives_text = self.font.render(f"Lives: {self.logic.lives}", True, COLOR_TEXT)
@@ -249,7 +268,7 @@ class PacmanApp:
         )
 
     def _draw_overlay(self, message: str) -> None:
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        overlay = self.pg.Surface((self.width, self.height), self.pg.SRCALPHA)
         overlay.fill((0, 0, 0, 160))
         self.screen.blit(overlay, (0, 0))
 
@@ -278,11 +297,15 @@ class PacmanApp:
             self.handle_events()
             self.update(delta)
             self.draw()
-        pygame.quit()
+        self.pg.quit()
 
 
 def main() -> None:
-    PacmanApp().run()
+    try:
+        PacmanApp().run()
+    except ModuleNotFoundError as exc:
+        print(exc)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
