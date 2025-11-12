@@ -1,14 +1,13 @@
-"""Graphical Pac-Man clone rendered with pygame."""
+"""Graphical Pac-Man front-end implemented with pygame."""
 from __future__ import annotations
 
 import math
 import os
 import sys
+from dataclasses import dataclass
 from importlib import import_module
 from importlib.util import find_spec
 from typing import Any, Dict, Tuple
-
-pygame = import_module("pygame") if find_spec("pygame") else None
 
 if __package__ in (None, ""):
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -19,25 +18,42 @@ if __package__ in (None, ""):
 else:
     from .common import DIRECTIONS, PacmanLogic
 
-# --- Configuration -------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
 TILE_SIZE = 24
 STATUS_HEIGHT = 96
 STEP_DURATION = 0.12  # Seconds per simulation step
 RESPAWN_PAUSE = 1.0   # Seconds to pause after losing a life
 
-COLOR_BACKGROUND = (0, 0, 0)
-COLOR_WALL = (33, 33, 222)
-COLOR_PELLET = (255, 191, 0)
-COLOR_POWER = (255, 255, 255)
-COLOR_PACMAN = (255, 232, 0)
-COLOR_TEXT = (255, 255, 255)
-COLOR_FRIGHTENED = (0, 174, 255)
-GHOST_COLORS = [
-    (255, 64, 64),
-    (255, 184, 222),
-    (255, 184, 82),
-    (64, 255, 215),
-]
+
+@dataclass(frozen=True)
+class Palette:
+    background: Tuple[int, int, int] = (0, 0, 0)
+    wall: Tuple[int, int, int] = (33, 33, 222)
+    pellet: Tuple[int, int, int] = (255, 191, 0)
+    power: Tuple[int, int, int] = (255, 255, 255)
+    pacman: Tuple[int, int, int] = (255, 232, 0)
+    text: Tuple[int, int, int] = (255, 255, 255)
+    frightened: Tuple[int, int, int] = (0, 174, 255)
+    ghosts: Tuple[Tuple[int, int, int], ...] = (
+        (255, 64, 64),
+        (255, 184, 222),
+        (255, 184, 82),
+        (64, 255, 215),
+    )
+
+
+def _load_pygame():
+    spec = find_spec("pygame")
+    if spec is None:
+        raise ModuleNotFoundError(
+            "The Pac-Man GUI requires the 'pygame' package. Install it with 'pip install pygame'."
+        )
+    return import_module("pygame")
+
 
 def _build_key_map(pg: Any) -> Dict[int, Tuple[int, int]]:
     return {
@@ -51,7 +67,8 @@ def _build_key_map(pg: Any) -> Dict[int, Tuple[int, int]]:
         pg.K_d: DIRECTIONS["RIGHT"],
     }
 
-DIRECTION_ANGLE = {
+
+PACMAN_DIRECTION_ANGLE = {
     DIRECTIONS["RIGHT"]: 0,
     DIRECTIONS["DOWN"]: 90,
     DIRECTIONS["LEFT"]: 180,
@@ -59,34 +76,161 @@ DIRECTION_ANGLE = {
 }
 
 
-def _require_pygame() -> None:
-    if pygame is None:
-        raise ModuleNotFoundError(
-            "The Pac-Man GUI requires the 'pygame' package. Install it with 'pip install pygame'."
+class PacmanRenderer:
+    """Draws the Pac-Man world using pygame primitives."""
+
+    def __init__(self, pg, screen, palette: Palette) -> None:
+        self.pg = pg
+        self.screen = screen
+        self.palette = palette
+        self.font = pg.font.SysFont("arial", 24)
+        self.small_font = pg.font.SysFont("arial", 18)
+        self.mouth_phase = 0.0
+
+    def draw_world(self, logic: PacmanLogic, tile_size: int, status_height: int, delta: float) -> None:
+        self.screen.fill(self.palette.background)
+        self._draw_maze(logic, tile_size)
+        self._draw_pellets(logic, tile_size)
+        self._draw_characters(logic, tile_size, delta)
+        self._draw_status_panel(logic, tile_size, status_height)
+
+    # ------------------------------------------------------------------
+    def _draw_maze(self, logic: PacmanLogic, tile_size: int) -> None:
+        for row, col in logic.walls:
+            rect = self.pg.Rect(col * tile_size, row * tile_size, tile_size, tile_size)
+            self.pg.draw.rect(self.screen, self.palette.wall, rect, border_radius=6)
+
+    def _draw_pellets(self, logic: PacmanLogic, tile_size: int) -> None:
+        half = tile_size // 2
+        pellet_radius = max(2, tile_size // 8)
+        power_radius = max(4, tile_size // 4)
+
+        for row, col in logic.pellets:
+            center = (col * tile_size + half, row * tile_size + half)
+            self.pg.draw.circle(self.screen, self.palette.pellet, center, pellet_radius)
+
+        for row, col in logic.power_pellets:
+            center = (col * tile_size + half, row * tile_size + half)
+            self.pg.draw.circle(self.screen, self.palette.power, center, power_radius)
+
+    def _draw_characters(self, logic: PacmanLogic, tile_size: int, delta: float) -> None:
+        self._draw_ghosts(logic, tile_size)
+        self._draw_pacman(logic, tile_size, delta)
+
+    def _draw_pacman(self, logic: PacmanLogic, tile_size: int, delta: float) -> None:
+        # Simple mouth animation that opens and closes based on time.
+        self.mouth_phase = (self.mouth_phase + delta * 6) % (2 * math.pi)
+        openness = (math.sin(self.mouth_phase) + 1) / 2  # 0..1
+        openness = 0.15 + 0.35 * openness  # keep a minimum wedge so pacman is visible
+
+        row, col = logic.pacman.position
+        center_x = col * tile_size + tile_size // 2
+        center_y = row * tile_size + tile_size // 2
+        radius = tile_size // 2 - 2
+        self.pg.draw.circle(self.screen, self.palette.pacman, (center_x, center_y), radius)
+
+        angle = math.radians(PACMAN_DIRECTION_ANGLE.get(logic.pacman.direction, 0))
+        gap = math.pi * openness
+        points = [
+            (center_x, center_y),
+            (
+                center_x + radius * math.cos(angle - gap),
+                center_y + radius * math.sin(angle - gap),
+            ),
+            (
+                center_x + radius * math.cos(angle + gap),
+                center_y + radius * math.sin(angle + gap),
+            ),
+        ]
+        self.pg.draw.polygon(self.screen, self.palette.background, [(round(x), round(y)) for x, y in points])
+
+    def _draw_ghosts(self, logic: PacmanLogic, tile_size: int) -> None:
+        for index, ghost in enumerate(logic.ghosts):
+            row, col = ghost.position
+            x = col * tile_size
+            y = row * tile_size
+            color = self.palette.frightened if ghost.frightened() else self._ghost_color(index)
+
+            head_center = (x + tile_size // 2, y + tile_size // 2)
+            head_radius = tile_size // 2 - 2
+            self.pg.draw.circle(self.screen, color, head_center, head_radius)
+
+            body_rect = self.pg.Rect(x + 2, y + tile_size // 2, tile_size - 4, tile_size // 2)
+            self.pg.draw.rect(self.screen, color, body_rect)
+
+            fringe_radius = max(2, tile_size // 8)
+            for i in range(4):
+                fringe_center = (x + fringe_radius * (2 * i + 1), y + tile_size - fringe_radius)
+                self.pg.draw.circle(self.screen, color, fringe_center, fringe_radius)
+
+            eye_offset_x = tile_size // 6
+            eye_offset_y = tile_size // 6
+            eye_radius = max(2, tile_size // 8)
+            pupil_radius = max(2, tile_size // 16)
+            for offset in (-eye_offset_x, eye_offset_x):
+                eye_center = (head_center[0] + offset, head_center[1] - eye_offset_y)
+                self.pg.draw.circle(self.screen, (255, 255, 255), eye_center, eye_radius)
+                self.pg.draw.circle(self.screen, (0, 0, 0), eye_center, pupil_radius)
+
+    def _ghost_color(self, index: int) -> Tuple[int, int, int]:
+        palette = self.palette.ghosts
+        return palette[index % len(palette)]
+
+    def _draw_status_panel(self, logic: PacmanLogic, tile_size: int, status_height: int) -> None:
+        panel_rect = self.pg.Rect(0, logic.height * tile_size, logic.width * tile_size, status_height)
+        self.pg.draw.rect(self.screen, (16, 16, 16), panel_rect)
+
+        score = self.font.render(f"Score: {logic.score}", True, self.palette.text)
+        lives = self.font.render(f"Lives: {logic.lives}", True, self.palette.text)
+        pellets = self.small_font.render(
+            f"Pellets remaining: {logic.remaining_pellets()}", True, self.palette.text
         )
+        instructions = self.small_font.render(
+            "Arrows/WASD to move · ESC to quit · Enter to restart", True, self.palette.text
+        )
+
+        self.screen.blit(score, (16, logic.height * tile_size + 12))
+        self.screen.blit(lives, (16, logic.height * tile_size + 44))
+        self.screen.blit(pellets, (16, logic.height * tile_size + 70))
+        self.screen.blit(
+            instructions,
+            (
+                int(panel_rect.width / 2 - instructions.get_width() / 2),
+                logic.height * tile_size + status_height - 28,
+            ),
+        )
+
+    def draw_overlay(self, message: str, width: int, height: int) -> None:
+        overlay = self.pg.Surface((width, height), self.pg.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        self.screen.blit(overlay, (0, 0))
+
+        title = self.font.render(message, True, self.palette.text)
+        prompt = self.small_font.render("Press Enter to play again", True, self.palette.text)
+        self.screen.blit(title, (int(width / 2 - title.get_width() / 2), int(height / 2 - 40)))
+        self.screen.blit(prompt, (int(width / 2 - prompt.get_width() / 2), int(height / 2)))
 
 
 class PacmanApp:
-    """Pygame application shell for the Pac-Man clone."""
+    """Event loop and high-level orchestration for the pygame front-end."""
 
     def __init__(self) -> None:
-        _require_pygame()
-        self.pg = pygame  # type: ignore[assignment]
-        self.key_map = _build_key_map(self.pg)
+        pg = _load_pygame()
+        self.pg = pg
+        self.key_map = _build_key_map(pg)
 
-        self.pg.init()
-        self.pg.display.set_caption("Pac-Man")
-        self.pg.font.init()
+        pg.init()
+        pg.display.set_caption("Pac-Man")
+        pg.font.init()
 
         self.logic = PacmanLogic()
-        self.clock = self.pg.time.Clock()
         self.tile_size = TILE_SIZE
         self.width = self.logic.width * self.tile_size
         self.height = self.logic.height * self.tile_size + STATUS_HEIGHT
-        self.screen = self.pg.display.set_mode((self.width, self.height))
+        self.screen = pg.display.set_mode((self.width, self.height))
 
-        self.font = self.pg.font.SysFont("arial", 24)
-        self.small_font = self.pg.font.SysFont("arial", 18)
+        self.renderer = PacmanRenderer(pg, self.screen, Palette())
+        self.clock = pg.time.Clock()
 
         self.running = True
         self.state = "playing"  # "playing" or "gameover"
@@ -94,23 +238,32 @@ class PacmanApp:
         self.step_accumulator = 0.0
         self.pause_timer = 0.0
 
-    # --- Event handling --------------------------------------------------
+    # ------------------------------------------------------------------
     def handle_events(self) -> None:
         for event in self.pg.event.get():
             if event.type == self.pg.QUIT:
                 self.running = False
-            elif event.type == self.pg.KEYDOWN:
-                if event.key == self.pg.K_ESCAPE:
-                    self.running = False
-                elif self.state == "gameover" and event.key in (self.pg.K_RETURN, self.pg.K_SPACE):
-                    self.reset_game()
-                elif self.state == "playing":
-                    if event.key in self.key_map:
-                        self.logic.set_desired_direction(self.key_map[event.key])
-                    elif event.key in (self.pg.K_q, self.pg.K_x):
-                        self.running = False
+                return
+            if event.type == self.pg.KEYDOWN:
+                self._handle_keydown(event.key)
 
-    # --- Game state updates ----------------------------------------------
+    def _handle_keydown(self, key: int) -> None:
+        if key == self.pg.K_ESCAPE or key in (self.pg.K_q, self.pg.K_x):
+            self.running = False
+            return
+
+        if self.state == "gameover" and key in (self.pg.K_RETURN, self.pg.K_SPACE):
+            self.reset_game()
+            return
+
+        if self.state != "playing":
+            return
+
+        direction = self.key_map.get(key)
+        if direction:
+            self.logic.set_desired_direction(direction)
+
+    # ------------------------------------------------------------------
     def update(self, delta: float) -> None:
         if self.state != "playing":
             return
@@ -128,175 +281,36 @@ class PacmanApp:
                 break
 
         if not self.logic.is_alive():
-            self.state = "gameover"
-            self.game_over_message = "Game Over"
+            self._trigger_game_over("Game Over")
         elif self.logic.is_level_cleared():
-            self.state = "gameover"
-            self.game_over_message = "You Win!"
+            self._trigger_game_over("You Win!")
 
-    # --- Rendering -------------------------------------------------------
-    def draw(self) -> None:
-        self.screen.fill(COLOR_BACKGROUND)
-        self._draw_maze()
-        self._draw_pellets()
-        self._draw_characters()
-        self._draw_status_panel()
+    def _trigger_game_over(self, message: str) -> None:
+        self.state = "gameover"
+        self.game_over_message = message
 
+    # ------------------------------------------------------------------
+    def draw(self, delta: float) -> None:
+        self.renderer.draw_world(self.logic, self.tile_size, STATUS_HEIGHT, delta)
         if self.state == "gameover":
-            self._draw_overlay(self.game_over_message)
-
+            self.renderer.draw_overlay(self.game_over_message, self.width, self.height)
         self.pg.display.flip()
 
-    def _draw_maze(self) -> None:
-        for r in range(self.logic.height):
-            for c in range(self.logic.width):
-                if (r, c) in self.logic.walls:
-                    rect = self.pg.Rect(
-                        c * self.tile_size,
-                        r * self.tile_size,
-                        self.tile_size,
-                        self.tile_size,
-                    )
-                    self.pg.draw.rect(self.screen, COLOR_WALL, rect, border_radius=6)
-
-    def _draw_pellets(self) -> None:
-        half = self.tile_size // 2
-        for row, col in self.logic.pellets:
-            center = (col * self.tile_size + half, row * self.tile_size + half)
-            self.pg.draw.circle(self.screen, COLOR_PELLET, center, self.tile_size // 8)
-        for row, col in self.logic.power_pellets:
-            center = (col * self.tile_size + half, row * self.tile_size + half)
-            self.pg.draw.circle(self.screen, COLOR_POWER, center, self.tile_size // 4)
-
-    def _draw_characters(self) -> None:
-        self._draw_ghosts()
-        self._draw_pacman()
-
-    def _draw_pacman(self) -> None:
-        row, col = self.logic.pacman.position
-        center_x = col * self.tile_size + self.tile_size // 2
-        center_y = row * self.tile_size + self.tile_size // 2
-        radius = self.tile_size // 2 - 2
-        self.pg.draw.circle(self.screen, COLOR_PACMAN, (center_x, center_y), radius)
-
-        angle = DIRECTION_ANGLE.get(self.logic.pacman.direction, 0)
-        mouth_angle = math.radians(angle)
-        gap = math.pi / 4
-        points = [
-            (center_x, center_y),
-            (
-                center_x + radius * math.cos(mouth_angle - gap),
-                center_y + radius * math.sin(mouth_angle - gap),
-            ),
-            (
-                center_x + radius * math.cos(mouth_angle + gap),
-                center_y + radius * math.sin(mouth_angle + gap),
-            ),
-        ]
-        self.pg.draw.polygon(
-            self.screen,
-            COLOR_BACKGROUND,
-            [(round(x), round(y)) for x, y in points],
-        )
-
-    def _draw_ghosts(self) -> None:
-        for index, ghost in enumerate(self.logic.ghosts):
-            row, col = ghost.position
-            x = col * self.tile_size
-            y = row * self.tile_size
-            color = COLOR_FRIGHTENED if ghost.frightened() else GHOST_COLORS[index % len(GHOST_COLORS)]
-
-            head_center = (
-                x + self.tile_size // 2,
-                y + self.tile_size // 2,
-            )
-            head_radius = self.tile_size // 2 - 2
-            self.pg.draw.circle(self.screen, color, head_center, head_radius)
-
-            body_rect = self.pg.Rect(
-                x + 2,
-                y + self.tile_size // 2,
-                self.tile_size - 4,
-                self.tile_size // 2,
-            )
-            self.pg.draw.rect(self.screen, color, body_rect)
-
-            fringe_radius = self.tile_size // 8
-            for i in range(4):
-                fringe_center = (
-                    x + fringe_radius * (2 * i + 1),
-                    y + self.tile_size - fringe_radius,
-                )
-                self.pg.draw.circle(
-                    self.screen,
-                    color,
-                    (int(fringe_center[0]), int(fringe_center[1])),
-                    fringe_radius,
-                )
-
-            eye_offset_x = self.tile_size // 6
-            eye_offset_y = self.tile_size // 6
-            eye_radius = self.tile_size // 8
-            pupil_radius = max(2, self.tile_size // 16)
-            for offset in (-eye_offset_x, eye_offset_x):
-                eye_center = (head_center[0] + offset, head_center[1] - eye_offset_y)
-                self.pg.draw.circle(self.screen, (255, 255, 255), eye_center, eye_radius)
-                self.pg.draw.circle(self.screen, (0, 0, 0), eye_center, pupil_radius)
-
-    def _draw_status_panel(self) -> None:
-        panel_rect = self.pg.Rect(0, self.logic.height * self.tile_size, self.width, STATUS_HEIGHT)
-        self.pg.draw.rect(self.screen, (16, 16, 16), panel_rect)
-
-        score_text = self.font.render(f"Score: {self.logic.score}", True, COLOR_TEXT)
-        lives_text = self.font.render(f"Lives: {self.logic.lives}", True, COLOR_TEXT)
-        remaining_text = self.small_font.render(
-            f"Pellets remaining: {self.logic.remaining_pellets()}", True, COLOR_TEXT
-        )
-        instructions_text = self.small_font.render(
-            "Use arrows or WASD to move · Press ESC to quit · Enter to restart", True, COLOR_TEXT
-        )
-
-        self.screen.blit(score_text, (16, self.logic.height * self.tile_size + 12))
-        self.screen.blit(lives_text, (16, self.logic.height * self.tile_size + 44))
-        self.screen.blit(remaining_text, (16, self.logic.height * self.tile_size + 70))
-        self.screen.blit(
-            instructions_text,
-            (
-                int(self.width / 2 - instructions_text.get_width() / 2),
-                self.logic.height * self.tile_size + STATUS_HEIGHT - 28,
-            ),
-        )
-
-    def _draw_overlay(self, message: str) -> None:
-        overlay = self.pg.Surface((self.width, self.height), self.pg.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
-        self.screen.blit(overlay, (0, 0))
-
-        title = self.font.render(message, True, COLOR_TEXT)
-        prompt = self.small_font.render("Press Enter to play again", True, COLOR_TEXT)
-        self.screen.blit(
-            title,
-            (int(self.width / 2 - title.get_width() / 2), int(self.height / 2 - 40)),
-        )
-        self.screen.blit(
-            prompt,
-            (int(self.width / 2 - prompt.get_width() / 2), int(self.height / 2)),
-        )
-
-    # --- Game management -------------------------------------------------
+    # ------------------------------------------------------------------
     def reset_game(self) -> None:
         self.logic = PacmanLogic()
-        self.state = "playing"
-        self.game_over_message = ""
         self.step_accumulator = 0.0
         self.pause_timer = 0.0
+        self.state = "playing"
+        self.game_over_message = ""
 
+    # ------------------------------------------------------------------
     def run(self) -> None:
         while self.running:
             delta = self.clock.tick(60) / 1000.0
             self.handle_events()
             self.update(delta)
-            self.draw()
+            self.draw(delta)
         self.pg.quit()
 
 
