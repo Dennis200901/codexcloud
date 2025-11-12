@@ -2,10 +2,16 @@
 from __future__ import annotations
 
 import curses
+import os
+import sys
 import time
 from typing import Dict
 
-from pacman.common import DIRECTIONS, Direction, MAZE_LAYOUT, PacmanLogic
+if __package__ in (None, ""):
+    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+    from pacman.common import DIRECTIONS, Direction, MAZE_LAYOUT, PacmanLogic
+else:
+    from .common import DIRECTIONS, Direction, MAZE_LAYOUT, PacmanLogic
 
 
 # Mapping is defined lazily to allow importing without curses on other platforms.

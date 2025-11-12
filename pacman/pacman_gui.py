@@ -2,11 +2,17 @@
 from __future__ import annotations
 
 import math
+import os
+import sys
 from typing import Dict, Tuple
 
 import pygame
 
-from pacman.common import DIRECTIONS, PacmanLogic
+if __package__ in (None, ""):
+    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+    from pacman.common import DIRECTIONS, PacmanLogic
+else:
+    from .common import DIRECTIONS, PacmanLogic
 
 # --- Configuration -------------------------------------------------------
 TILE_SIZE = 24

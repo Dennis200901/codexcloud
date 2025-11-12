@@ -17,11 +17,13 @@ available:
 
 ### Terminal edition
 
-Run the terminal edition from the repository root so Python can resolve the
-package:
+Run the terminal edition from the repository root. You can execute it either as a
+module or as a script:
 
 ```bash
 python -m pacman.pacman_game
+# or
+python pacman/pacman_game.py
 ```
 
 Controls: Arrow keys or `W`, `A`, `S`, `D` to move, `q` to quit.
@@ -30,6 +32,8 @@ Controls: Arrow keys or `W`, `A`, `S`, `D` to move, `q` to quit.
 
 ```bash
 python -m pacman.pacman_gui
+# or
+python pacman/pacman_gui.py
 ```
 
 Controls: Arrow keys or `W`, `A`, `S`, `D` to move, `Esc` to quit, `Enter`
