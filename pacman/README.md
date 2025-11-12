@@ -1,24 +1,36 @@
 # Pacman
 
-A lightweight terminal Pac-Man clone implemented with Python's `curses` module. The
-implementation keeps the original maze feel while remaining playable from a
-terminal window.
+A lightweight Pac-Man clone implemented in Python. Two front-ends are
+available:
+
+* A curses-based terminal version for quick play from any terminal window.
+* A fully graphical pygame version inspired by the classic arcade look.
 
 ## Requirements
 
 * Python 3.8 or newer
-* A terminal that supports ANSI escape codes and cursor movement
+* A terminal that supports ANSI escape codes and cursor movement (for the
+  curses edition)
+* [`pygame`](https://www.pygame.org/) for the graphical edition (`pip install pygame`)
 
-## Running the game
+## Running the games
+
+### Terminal edition
 
 ```bash
 python pacman/pacman_game.py
 ```
 
-### Controls
+Controls: Arrow keys or `W`, `A`, `S`, `D` to move, `q` to quit.
 
-* Arrow keys or `W`, `A`, `S`, `D` — move Pac-Man
-* `q` — quit the game
+### Graphical edition
+
+```bash
+python -m pacman.pacman_gui
+```
+
+Controls: Arrow keys or `W`, `A`, `S`, `D` to move, `Esc` to quit, `Enter`
+to restart after a game over.
 
 ## Gameplay notes
 
