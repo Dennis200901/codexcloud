@@ -3,6 +3,7 @@ from typing import List, Tuple
 
 import pygame
 
+from .theme import NEON_PINK, draw_neon_background, draw_panel
 from .ui import BackButton
 
 
@@ -42,9 +43,8 @@ class TetrisGame:
         ]
         self.current_piece = None
         self.next_piece = self._get_new_piece()
-        self.fall_time = 0
-        self.fall_speed = 500
-        self.last_drop_time = pygame.time.get_ticks()
+        self.drop_timer = 0.0
+        self.fall_interval = 0.5
         self.level = 1
         self.score = 0
         self.lines_cleared = 0
@@ -112,7 +112,7 @@ class TetrisGame:
             self.score += (100 * lines) * self.level
             if self.lines_cleared // 10 >= self.level:
                 self.level += 1
-                self.fall_speed = max(100, int(self.fall_speed * 0.85))
+                self.fall_interval = max(0.1, self.fall_interval * 0.85)
 
     def hard_drop(self):
         while True:
@@ -151,25 +151,24 @@ class TetrisGame:
         self.board = [[None for _ in range(self.COLS)] for _ in range(self.ROWS)]
         self.current_piece = None
         self.next_piece = self._get_new_piece()
-        self.fall_time = 0
-        self.fall_speed = 500
-        self.last_drop_time = pygame.time.get_ticks()
+        self.drop_timer = 0.0
+        self.fall_interval = 0.5
         self.level = 1
         self.score = 0
         self.lines_cleared = 0
         self.game_over = False
         self.spawn_piece()
 
-    def update(self):
+    def update(self, delta: float = 0.0):
         if self.game_over:
             return
-        current_time = pygame.time.get_ticks()
-        if current_time - self.last_drop_time > self.fall_speed:
+        self.drop_timer += delta
+        if self.drop_timer >= self.fall_interval:
             self.current_piece["y"] += 1
             if not self.valid_space(self.current_piece):
                 self.current_piece["y"] -= 1
                 self.lock_piece()
-            self.last_drop_time = current_time
+            self.drop_timer = 0.0
 
     def draw_grid(self):
         for y in range(self.ROWS):
@@ -209,15 +208,21 @@ class TetrisGame:
                 pygame.draw.rect(self.screen, color, rect)
                 pygame.draw.rect(self.screen, (0, 0, 0), rect, 1)
 
-    def draw_next_piece(self):
-        label = self.font.render("Nächstes", True, (255, 255, 255))
-        self.screen.blit(label, (self.offset_x + self.play_width + 40, self.offset_y))
+    def draw_next_piece(self, panel_rect: pygame.Rect):
+        preview_size = self.block_size * 4
+        preview_rect = pygame.Rect(
+            panel_rect.x + (panel_rect.width - preview_size) / 2,
+            panel_rect.y + 80,
+            preview_size,
+            preview_size,
+        )
+        pygame.draw.rect(self.screen, (0, 0, 0, 140), preview_rect, border_radius=12)
         piece = self.next_piece
         color = self.COLORS[piece["type"]]
         for x, y in piece["shape"]:
             rect = pygame.Rect(
-                self.offset_x + self.play_width + 40 + (x + 1) * self.block_size,
-                self.offset_y + 40 + (y + 1) * self.block_size,
+                preview_rect.x + (x + 1) * self.block_size,
+                preview_rect.y + (y + 1) * self.block_size,
                 self.block_size,
                 self.block_size,
             )
@@ -225,12 +230,22 @@ class TetrisGame:
             pygame.draw.rect(self.screen, (0, 0, 0), rect, 1)
 
     def draw_sidebar(self):
-        lines_text = self.font.render(f"Linien: {self.lines_cleared}", True, (255, 255, 255))
-        level_text = self.font.render(f"Level: {self.level}", True, (255, 255, 255))
-        score_text = self.font.render(f"Score: {self.score}", True, (255, 255, 255))
-        self.screen.blit(lines_text, (self.offset_x + self.play_width + 40, self.offset_y + 200))
-        self.screen.blit(level_text, (self.offset_x + self.play_width + 40, self.offset_y + 260))
-        self.screen.blit(score_text, (self.offset_x + self.play_width + 40, self.offset_y + 320))
+        panel_width = self.block_size * 6
+        panel_rect = pygame.Rect(
+            self.offset_x + self.play_width + 40,
+            self.offset_y,
+            panel_width,
+            self.play_height,
+        )
+        lines = [
+            f"Level: {self.level}",
+            f"Linien: {self.lines_cleared}",
+            f"Score: {self.score}",
+            "Leertaste = Hard Drop",
+            "R = Neustart",
+        ]
+        draw_panel(self.screen, panel_rect, "Tetris", lines)
+        self.draw_next_piece(panel_rect)
 
     def draw_game_over(self):
         overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
@@ -241,11 +256,13 @@ class TetrisGame:
         self.screen.blit(title, rect)
 
     def draw(self):
-        self.screen.fill((10, 10, 30))
+        draw_neon_background(self.screen)
+        board_bg = pygame.Surface((self.play_width, self.play_height), pygame.SRCALPHA)
+        pygame.draw.rect(board_bg, (0, 0, 0, 120), board_bg.get_rect(), border_radius=16)
+        self.screen.blit(board_bg, (self.offset_x, self.offset_y))
         self.draw_board()
         self.draw_piece(self.current_piece)
         self.draw_grid()
-        self.draw_next_piece()
         self.draw_sidebar()
         self.back_button.draw(self.screen)
         if self.game_over:

@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple
 
 import pygame
 
+from .theme import NEON_PINK, draw_neon_background, draw_panel
 from .ui import BackButton
 
 BOARD_SIZE = 8
@@ -282,11 +283,15 @@ class ChessGame:
         self.valid_moves = []
         self.winner = None
 
-    def update(self):
+    def update(self, delta: float = 0.0):
         pass
 
     def draw_board(self):
-        colors = [(235, 235, 208), (119, 148, 85)]
+        colors = [(240, 240, 255), (90, 130, 200)]
+        board_rect = pygame.Rect(self.offset_x, self.offset_y, self.board_size, self.board_size)
+        board_surface = pygame.Surface(board_rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(board_surface, (5, 5, 35, 200), board_surface.get_rect(), border_radius=24)
+        self.screen.blit(board_surface, board_rect.topleft)
         for row in range(BOARD_SIZE):
             for col in range(BOARD_SIZE):
                 color = colors[(row + col) % 2]
@@ -298,7 +303,7 @@ class ChessGame:
                 )
                 pygame.draw.rect(self.screen, color, rect)
                 if self.selected == (col, row):
-                    pygame.draw.rect(self.screen, (255, 215, 0), rect, 5)
+                    pygame.draw.rect(self.screen, NEON_PINK, rect, 5)
                 elif (col, row) in self.valid_moves:
                     pygame.draw.circle(
                         self.screen,
@@ -329,22 +334,30 @@ class ChessGame:
                     self.screen.blit(text, rect)
 
     def draw_status(self):
-        status = f"Am Zug: {'Weiß' if self.turn == WHITE else 'Schwarz'}"
-        text = self.font.render(status, True, (255, 255, 255))
-        self.screen.blit(text, (self.offset_x, self.offset_y - 60))
-        hint = self.font.render("R = Neustart", True, (200, 200, 200))
-        self.screen.blit(hint, (self.offset_x, self.offset_y + self.board_size + 20))
+        panel_height = 180
+        panel_rect = pygame.Rect(
+            self.offset_x,
+            self.offset_y + self.board_size + 30,
+            self.board_size,
+            panel_height,
+        )
+        lines = [
+            f"Am Zug: {'Weiß' if self.turn == WHITE else 'Schwarz'}",
+            "R = Neustart",
+            "Klicke Figuren und Ziehe",
+        ]
+        draw_panel(self.screen, panel_rect, "Schach", lines)
         if self.winner:
             if self.winner == "Remis":
                 message = "Remis"
             else:
                 message = f"Schachmatt - {'Weiß' if self.winner == WHITE else 'Schwarz'} gewinnt"
-            win_text = self.font.render(message, True, (255, 215, 0))
-            rect = win_text.get_rect(center=(self.screen.get_width() / 2, self.offset_y - 120))
+            win_text = self.font.render(message, True, (255, 255, 255))
+            rect = win_text.get_rect(center=(self.screen.get_width() / 2, self.offset_y - 80))
             self.screen.blit(win_text, rect)
 
     def draw(self):
-        self.screen.fill((15, 20, 30))
+        draw_neon_background(self.screen)
         self.draw_board()
         self.draw_pieces()
         self.draw_status()
