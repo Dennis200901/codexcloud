@@ -1,5 +1,6 @@
 import pygame
 
+from .theme import NEON_PINK, draw_neon_background, draw_panel
 from .ui import BackButton
 
 
@@ -48,18 +49,22 @@ class TicTacToeGame:
         diag2 = row + col == 2 and all(self.board[i][2 - i] == player for i in range(3))
         return win_row or win_col or diag1 or diag2
 
-    def update(self):
+    def update(self, delta: float = 0.0):
         pass
 
     def draw(self):
-        self.screen.fill((20, 20, 20))
+        draw_neon_background(self.screen)
+        board_rect = pygame.Rect(self.offset_x, self.offset_y, self.grid_size, self.grid_size)
+        board_surface = pygame.Surface(board_rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(board_surface, (5, 5, 30, 200), board_surface.get_rect(), border_radius=24)
+        self.screen.blit(board_surface, board_rect.topleft)
         for i in range(4):
             start_pos = (self.offset_x + i * self.cell_size, self.offset_y)
             end_pos = (self.offset_x + i * self.cell_size, self.offset_y + self.grid_size)
-            pygame.draw.line(self.screen, (200, 200, 200), start_pos, end_pos, 4)
+            pygame.draw.line(self.screen, (120, 210, 255), start_pos, end_pos, 6)
             start_pos = (self.offset_x, self.offset_y + i * self.cell_size)
             end_pos = (self.offset_x + self.grid_size, self.offset_y + i * self.cell_size)
-            pygame.draw.line(self.screen, (200, 200, 200), start_pos, end_pos, 4)
+            pygame.draw.line(self.screen, (120, 210, 255), start_pos, end_pos, 6)
 
         for row in range(3):
             for col in range(3):
@@ -69,15 +74,24 @@ class TicTacToeGame:
                 )
                 if self.board[row][col] == "X":
                     size = self.cell_size / 2.5
-                    pygame.draw.line(self.screen, (255, 80, 80), (center[0] - size, center[1] - size), (center[0] + size, center[1] + size), 8)
-                    pygame.draw.line(self.screen, (255, 80, 80), (center[0] + size, center[1] - size), (center[0] - size, center[1] + size), 8)
+                    pygame.draw.line(self.screen, NEON_PINK, (center[0] - size, center[1] - size), (center[0] + size, center[1] + size), 10)
+                    pygame.draw.line(self.screen, NEON_PINK, (center[0] + size, center[1] - size), (center[0] - size, center[1] + size), 10)
                 elif self.board[row][col] == "O":
-                    pygame.draw.circle(self.screen, (80, 180, 255), center, self.cell_size / 2.5, 8)
+                    pygame.draw.circle(self.screen, (64, 255, 215), center, self.cell_size / 2.5, 10)
 
-        info_text = self.font.render(f"Spieler: {self.current_player}", True, (255, 255, 255))
-        self.screen.blit(info_text, (self.offset_x, self.offset_y - 60))
-        hint_text = self.font.render("R = Neustart", True, (200, 200, 200))
-        self.screen.blit(hint_text, (self.offset_x, self.offset_y + self.grid_size + 20))
+        panel_width = self.grid_size
+        panel_rect = pygame.Rect(
+            self.offset_x,
+            self.offset_y + self.grid_size + 30,
+            panel_width,
+            140,
+        )
+        status_lines = [
+            f"Am Zug: {self.current_player}",
+            "R = Neustart",
+            "Drei in einer Reihe zum Sieg!",
+        ]
+        draw_panel(self.screen, panel_rect, "Tic Tac Toe", status_lines)
 
         if self.winner:
             message = "Unentschieden" if self.winner == "Unentschieden" else f"Gewinner: {self.winner}"

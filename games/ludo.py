@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 
 import pygame
 
+from .theme import NEON_PINK, draw_neon_background, draw_panel
 from .ui import BackButton, Button
 
 
@@ -238,7 +239,7 @@ class LudoGame:
         self.message = ""
         self.winner = None
 
-    def update(self):
+    def update(self, delta: float = 0.0):
         pass
 
     def get_token_screen_position(self, player: int, token_index: int) -> Tuple[float, float]:
@@ -258,7 +259,10 @@ class LudoGame:
         return self.grid_to_pixel(grid)
 
     def draw_board(self):
-        self.screen.fill((240, 240, 240))
+        board_rect = pygame.Rect(self.offset_x, self.offset_y, self.board_size, self.board_size)
+        board_surface = pygame.Surface(board_rect.size, pygame.SRCALPHA)
+        pygame.draw.rect(board_surface, (5, 5, 30, 220), board_surface.get_rect(), border_radius=24)
+        self.screen.blit(board_surface, board_rect.topleft)
         # Home squares
         home_rects = [
             pygame.Rect(self.offset_x, self.offset_y + self.board_size / 2, self.board_size / 3, self.board_size / 3),
@@ -268,7 +272,7 @@ class LudoGame:
         ]
         for idx, rect in enumerate(home_rects):
             pygame.draw.rect(self.screen, self.COLORS[idx], rect)
-            pygame.draw.rect(self.screen, (0, 0, 0), rect, 4)
+            pygame.draw.rect(self.screen, (255, 255, 255), rect, 3)
 
         # Draw path squares
         for coord in self.PATH:
@@ -278,8 +282,8 @@ class LudoGame:
                 self.cell_size,
                 self.cell_size,
             )
-            pygame.draw.rect(self.screen, (220, 220, 220), rect)
-            pygame.draw.rect(self.screen, (150, 150, 150), rect, 1)
+            pygame.draw.rect(self.screen, (35, 35, 70), rect)
+            pygame.draw.rect(self.screen, (90, 90, 150), rect, 1)
 
         # Goal paths coloring
         for player, path in enumerate(self.GOAL_PATHS):
@@ -291,7 +295,7 @@ class LudoGame:
                     self.cell_size,
                 )
                 pygame.draw.rect(self.screen, self.COLORS[player], rect)
-                pygame.draw.rect(self.screen, (0, 0, 0), rect, 1)
+                pygame.draw.rect(self.screen, (255, 255, 255), rect, 1)
 
         # Center goal
         center_rect = pygame.Rect(
@@ -300,8 +304,8 @@ class LudoGame:
             3 * self.cell_size,
             3 * self.cell_size,
         )
-        pygame.draw.rect(self.screen, (255, 255, 255), center_rect)
-        pygame.draw.rect(self.screen, (0, 0, 0), center_rect, 3)
+        pygame.draw.rect(self.screen, (10, 10, 35), center_rect)
+        pygame.draw.rect(self.screen, (255, 255, 255), center_rect, 2)
 
     def draw_tokens(self):
         for player in range(4):
@@ -313,23 +317,31 @@ class LudoGame:
                 if not self.tokens[player][token_index].is_home():
                     pygame.draw.circle(self.screen, (0, 0, 0), pos, radius, 3)
                 if player == self.current_player and token_index in self.movable_tokens:
-                    pygame.draw.circle(self.screen, (255, 215, 0), pos, radius + 6, 4)
+                    pygame.draw.circle(self.screen, NEON_PINK, pos, radius + 6, 3)
 
     def draw_hud(self):
-        title = self.font.render(f"Am Zug: {self.PLAYER_NAMES[self.current_player]}", True, (0, 0, 0))
-        self.screen.blit(title, (self.offset_x, self.offset_y - 60))
-        if self.dice_value is not None:
-            dice_text = self.font.render(f"Wurf: {self.dice_value}", True, (0, 0, 0))
-            self.screen.blit(dice_text, (self.offset_x, self.offset_y + self.board_size + 10))
+        panel_width = min(360, self.screen.get_width() - (self.offset_x + self.board_size + 80))
+        panel_rect = pygame.Rect(
+            self.offset_x + self.board_size + 40,
+            self.offset_y,
+            max(280, panel_width),
+            self.board_size,
+        )
+        dice_text = str(self.dice_value) if self.dice_value is not None else "-"
+        lines = [
+            f"Am Zug: {self.PLAYER_NAMES[self.current_player]}",
+            f"Wurf: {dice_text}",
+            "SPACE oder Button: würfeln",
+            "Klicke einen Stein zum Ziehen",
+        ]
         if self.message:
-            msg_surface = self.font.render(self.message, True, (0, 0, 0))
-            self.screen.blit(msg_surface, (self.offset_x, self.offset_y + self.board_size + 60))
+            lines.append(self.message)
         if self.winner is not None:
-            win_text = self.font.render(f"{self.PLAYER_NAMES[self.winner]} hat gewonnen! R für Neustart", True, (0, 0, 0))
-            rect = win_text.get_rect(center=(self.screen.get_width() / 2, self.offset_y - 120))
-            self.screen.blit(win_text, rect)
+            lines.append(f"{self.PLAYER_NAMES[self.winner]} gewinnt! R = Neustart")
+        draw_panel(self.screen, panel_rect, "Mensch ärgere dich nicht", lines)
 
     def draw(self):
+        draw_neon_background(self.screen)
         self.draw_board()
         self.draw_tokens()
         self.draw_hud()
